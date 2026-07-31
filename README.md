@@ -61,8 +61,8 @@ than averaged in. `avg/max over ...` in the footer is the period both it and
 
 | key | action |
 |---|---|
-| `+` `=` | sample faster (50ms / 100ms / 250ms / 500ms / 1s / 2s / 5s) |
-| `-` `_` | sample slower |
+| `+` | sample faster (50ms / 100ms / 250ms / 500ms / 1s / 2s / 5s) |
+| `-` | sample slower |
 | `r` | reset stats: observed max, average, and the period all restart here |
 | `q` | quit |
 
