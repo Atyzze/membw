@@ -1,0 +1,65 @@
+# Memory-bandwidth collector (AMD UMC via perf).
+#
+# Grants ONLY CAP_PERFMON to the collector (and the perf it spawns, since
+# ambient capabilities survive execve). No sudo, no global change to
+# kernel.perf_event_paranoid. A single collector owns the counters; any number
+# of unprivileged GUIs read the file it writes to /run/membw/latest.json.
+#
+# install.sh sets this up for you. Manual install:
+#   sudo mkdir -p /opt/membw && sudo cp membw.py /opt/membw/
+#   sudo cp membw-collector.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now membw-collector.service
+# Then, as your user (no sudo):
+#   python3 membw.py --source file --file /run/membw/latest.json
+
+[Unit]
+Description=Memory bandwidth collector (AMD UMC via perf)
+Documentation=file:/opt/membw/README.md
+
+[Service]
+Type=simple
+
+# Ensure the uncore PMU driver is loaded. The '+' runs THIS line as full root
+# (modprobe needs CAP_SYS_MODULE) even though the service otherwise drops to an
+# unprivileged dynamic user. A no-op if the module is already loaded or built in.
+ExecStartPre=+/usr/bin/modprobe amd_uncore
+
+# --interval matches the GUI's default so the graph gets one bar per real
+# reading. The GUI discards repeats, so a slower collector costs plot detail
+# rather than accuracy, but matching them keeps the graph at full resolution.
+#
+# No bandwidth ceiling is passed: membw.py derives the theoretical upper cap
+# from the UMC memory clock at startup and continuously cross-checks it against
+# the controller's utilization metric, so it stays correct across memory changes.
+ExecStart=/usr/bin/python3 /opt/membw/membw.py --serve --file /run/membw/latest.json --source perf --interval 250ms
+Restart=on-failure
+RestartSec=2
+
+# /run/membw is created world-readable and owned by the service user, so the
+# unprivileged GUI can read latest.json. /run is a tmpfs, so these writes never
+# touch the SSD. UMask keeps new files group/other-readable even before the
+# writer's explicit chmod (the code also sets 0644).
+RuntimeDirectory=membw
+RuntimeDirectoryMode=0755
+UMask=0022
+
+# The whole point: exactly one capability, nothing else.
+AmbientCapabilities=CAP_PERFMON
+CapabilityBoundingSet=CAP_PERFMON
+
+# Run as an ephemeral, unprivileged user holding only CAP_PERFMON.
+DynamicUser=yes
+NoNewPrivileges=yes
+
+# Modest hardening. If perf ever fails to open counters, comment this block out
+# first while debugging.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
